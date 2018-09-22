@@ -20,6 +20,17 @@
 #include "mbed_trace.h"
 #include "LoRaWANInterface.h"
 #include "CayenneLPP.h"
+#include "XNucleoIKS01A2.h"
+
+/* Instantiate the expansion board */
+static XNucleoIKS01A2 *mems_expansion_board = XNucleoIKS01A2::instance(D14, D15, D4, D5);
+
+/* Retrieve the composing elements of the expansion board */
+static LSM303AGRMagSensor *magnetometer = mems_expansion_board->magnetometer;
+static HTS221Sensor *hum_temp = mems_expansion_board->ht_sensor;
+static LPS22HBSensor *press_temp = mems_expansion_board->pt_sensor;
+static LSM6DSLSensor *acc_gyro = mems_expansion_board->acc_gyro;
+static LSM303AGRAccSensor *accelerometer = mems_expansion_board->accelerometer;
 
 #ifdef TARGET_SIMULATOR
 #include "Sht31.h"
@@ -31,9 +42,9 @@ SX1276_LoRaRadio radio(D11, D12, D13, D10, A0, D2, D3, D4, D5, D8, D9, NC, NC, N
 
 #define TX_INTERVAL         10000
 
-static uint8_t LORAWAN_DEV_EUI[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-static uint8_t LORAWAN_APP_EUI[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-static uint8_t LORAWAN_APP_KEY[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static uint8_t LORAWAN_DEV_EUI[] = { 0x00, 0xA7, 0x7C, 0x67, 0xD2, 0xB1, 0x7F, 0xB3 };
+static uint8_t LORAWAN_APP_EUI[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x00, 0xAA, 0xDF };
+static uint8_t LORAWAN_APP_KEY[] = { 0x88, 0xFA, 0xC3, 0x1F, 0xB5, 0x3D, 0xCA, 0xE9, 0xFE, 0xBB, 0x42, 0xF5, 0x69, 0xC5, 0x18, 0x94 };
 
 static EventQueue ev_queue;
 static void lora_event_handler(lorawan_event_t event);
@@ -43,6 +54,8 @@ static lorawan_app_callbacks_t callbacks;
 int main (void)
 {
     mbed_trace_init();
+
+    hum_temp->enable();
 
     lorawan_status_t retcode;
 
@@ -65,12 +78,12 @@ int main (void)
     }
 
     // Enable adaptive data rate
-    if (lorawan.enable_adaptive_datarate() != LORAWAN_STATUS_OK) {
-        printf("enable_adaptive_datarate failed! \r\n");
+    if (lorawan.disable_adaptive_datarate() != LORAWAN_STATUS_OK) {
+        printf("disable_adaptive_datarate failed! \r\n");
         return -1;
     }
 
-    printf("Adaptive data  rate (ADR) - Enabled \r\n");
+    printf("Adaptive data  rate (ADR) - disabled \r\n");
 
     lorawan_connect_t connect_params;
     connect_params.connect_type = LORAWAN_CONNECTION_OTAA;
@@ -102,7 +115,9 @@ static void send_message() {
     static Sht31 sht31(I2C_SDA, I2C_SCL);
     float temperature = sht31.readTemperature();
 #else
-    float temperature = static_cast<float>(rand()) / static_cast<float>(RAND_MAX / 50) + 10.0f;
+    float temperature;
+    hum_temp->get_temperature(&temperature);
+    printf("Temperature is %f\n", temperature);
 #endif
 
     CayenneLPP payload(50);
